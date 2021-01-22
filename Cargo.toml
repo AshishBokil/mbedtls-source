@@ -1,9 +1,12 @@
 [package]
-name = "mbed"
+name = "mbedtls_source"
 version = "0.1.0"
-authors = ["Shashank Singh <cse.shashanksingh@gmail.com>"]
+authors = ["Ashish Bokil <ashishbkl11@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
+strum = "0.11.0"
+strum_macros = "0.11.0"
