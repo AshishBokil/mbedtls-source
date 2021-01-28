@@ -4,7 +4,7 @@ README
 
 
 # Project Strucuture
-implemented cmac 
+implemented cmac in enc/dec module
 
 # Contributors
 Ashish Bokil

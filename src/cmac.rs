@@ -1,23 +1,22 @@
  //use crate::cmac_header;
  use  crate::cmac_header;
  use crate::cipher;
-// #[path = "../enc_dec/cmac_header.rs"] mod cmac_header;
-//use crate::cipher;
+
 use std::mem;
 use std::ptr;
 use std::clone;
-//use std::convert::TryFrom;
-//use std::convert::TryInto;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 
 
 
-pub fn cmac_multiply_by_u(output : &[u8],input : &[u8], block_size: usize)->i32{
+pub fn cmac_multiply_by_u(output : &mut [u8],input : &[u8], block_size: usize)->i32{
 
     let R_128:u8 = 0x87;
     let R_64:u8 =0x1B;
     let mut R_n:u8;
     let mut mask:isize;
-    let overflow:u8 = 0x00;
+    let mut overflow:u8 = 0x00;
     let i:i32;
     if block_size == cmac_header::MBEDTLS_AES_BLOCK_SIZE 
     {
@@ -46,28 +45,21 @@ pub fn cmac_multiply_by_u(output : &[u8],input : &[u8], block_size: usize)->i32{
     return 0 ;
 }
 
-pub fn mbedtls_platform_zeroize(L:&[u8],len:usize)
-{
-    let mut i:i32=0;
-    while i<len as i32 {
-        L[i as usize]=0;
-        i=i+1;
-    }
-}
+
 
 /*
  * Generate subkeys
  *
  * - as specified by RFC 4493, section 2.3 Subkey Generation Algorithm
  */
-pub fn cmac_generate_subkeys(ctx: &mut cipher::cipher_context_t, K1 :&[u8] , K2 :&[u8])->i32{
+pub fn cmac_generate_subkeys(ctx: &mut cipher::cipher_context_t,  K1 : &mut[u8] ,mut K2 :&mut[u8])->i32{
 
     let mut ret:i32 =  cmac_header::MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
     let mut L:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX] ;
    // let mut L =vec![Default::default(); cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
     let ( olen, block_size):(&mut usize, usize);
 
-    mbedtls_platform_zeroize(&L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
+    cipher::mbedtls_platform_zeroize(&L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
 
     block_size = ctx.cipher_info.block_size ;
 
@@ -75,21 +67,21 @@ pub fn cmac_generate_subkeys(ctx: &mut cipher::cipher_context_t, K1 :&[u8] , K2 
     ret = cipher::cipher_update( ctx, &L, &block_size, &L, &mut olen );
     if ret != 0 {
 
-        mbedtls_platform_zeroize( &L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
+        cipher::mbedtls_platform_zeroize( &L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
     }
         
 
     /*
      * Generate K1 and K2
      */
-    ret = cmac_multiply_by_u( K1, &L , block_size );
+    ret = cmac_multiply_by_u(&mutK1, &L , block_size );
     if ret != 0 {
-        mbedtls_platform_zeroize( &L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
+        cipher::mbedtls_platform_zeroize( &L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
         return ret ;
     }
-    ret = cmac_multiply_by_u( K2, K1 , block_size );
+    ret = cmac_multiply_by_u( &mut K2, &mutK1 , block_size );
     if ret != 0 {
-         mbedtls_platform_zeroize( &L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
+         cipher::mbedtls_platform_zeroize( &L, mem::size_of::<[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX]>() );
          return ret;
     }
 
@@ -114,7 +106,7 @@ pub fn cmac_xor_block(output : &[u8],input1 : &[u8],input2 : &[u8], block_size: 
  * CBC and we use ECB mode, and anyway we need to XOR K1 or K2 in addition.
  */
 
-pub fn cmac_pad(padded_block:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX],padded_block_len:usize,
+pub fn cmac_pad(padded_block:&mut [u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX],padded_block_len:usize,
                 last_block: &[u8] , last_block_len :usize){
 
      let j:usize;
@@ -142,10 +134,10 @@ pub fn mbedtls_cipher_cmac_starts( ctx :&mut cipher::cipher_context_t,
     key: &u8,  keybits: usize )->i32{
 
         let  type_t:cipher::cipher_type_t;
-        let  cmac_ctx: &cmac_header::mbedtls_cmac_context_t ;
+        let  cmac_ctx: cmac_header::mbedtls_cmac_context_t ;
         let mut retval:i32;
 
-        retval= cipher::mbedtls_cipher_setkey( ctx, key, keybits,operation_t::MBEDTLS_ENCRYPT );
+        retval= cipher::mbedtls_cipher_setkey( ctx, key, keybits,cipher::operation_t::MBEDTLS_ENCRYPT );
         if  retval != 0 {
 
             return retval;
@@ -166,41 +158,37 @@ pub fn mbedtls_cipher_cmac_starts( ctx :&mut cipher::cipher_context_t,
     
         ctx.cmac_ctx= cmac_ctx;
     
-        mbedtls_platform_zeroize( cmac_ctx.state, mem::size_of::<cmac_ctx::state>()   );
+        cipher::mbedtls_platform_zeroize( &cmac_ctx.state,cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX* mem::size_of::<u8>()   );
     
 
         return 0;
  }
 
 
-pub fn mbedtls_cipher_cmac_update(  ctx: &mut cipher::cipher_context_t,
-    input : &u8, ilen : usize)->i32{
+pub fn mbedtls_cipher_cmac_update(ctx: &cipher::cipher_context_t,
+    input :&mut [u8], mut ilen :usize)->i32{
 //
 
- let cmac_ctx:&cmac_header::mbedtls_cmac_context_t;
+ let mut cmac_ctx:&cmac_header::mbedtls_cmac_context_t;
 let state:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
 let mut ret:i32 = 0;
-let (mut n, mut j, mut olen , mut block_size) : (usize,usize,usize,usize);
+let (mut n, mut j, mut olen , block_size) : (usize,usize,usize,usize);
 
-if !ptr::eq(ctx.cmac_ctx, cmac_ctx) {
-
-        return cmac_header::MBEDTLS_ERR_CIPHER_BAD_INPUT_DATA ;
-    }
     
 
-cmac_ctx = ctx.cmac_ctx;
-block_size = ctx::cipher_info::block_size;
-state = ctx::cmac_ctx::state;
+cmac_ctx = &ctx.cmac_ctx;
+block_size = ctx.cipher_info.block_size;
+state = ctx.cmac_ctx.state;
 
 /* process data larger than block
  * size than a block? */
-if cmac_ctx::unprocessed_len > 0 &&
-    ilen > block_size - cmac_ctx::unprocessed_len{
+if cmac_ctx.unprocessed_len > 0 &&
+    ilen > block_size - cmac_ctx.unprocessed_len{
 
-    ptr::copy_nonoverlapping(input, &mut cmac_ctx::unprocessed_block[cmac_ctx::unprocessed_len], 
-                                 block_size - cmac_ctx::unprocessed_len);
+  //  ptr::copy_nonoverlapping(&input, &mut cmac_ctx.unprocessed_block, 
+  //                               block_size - cmac_ctx.unprocessed_len);
 
-    cmac_xor_block( &state, cmac_ctx::unprocessed_block, &state, block_size );
+    cmac_xor_block( &state, &cmac_ctx.unprocessed_block, &state, block_size );
 
     ret = cipher::cipher_update( ctx, &state, &block_size, &state,&olen );
     if ret != 0 
@@ -208,7 +196,7 @@ if cmac_ctx::unprocessed_len > 0 &&
       return ret;
     }
 
-    input = &(input + block_size as u8 - cmac_ctx.unprocessed_len as u8);
+    input[1] = input[1] + block_size as u8 - cmac_ctx.unprocessed_len as u8;
     ilen -= block_size - cmac_ctx.unprocessed_len;
     cmac_ctx.unprocessed_len = 0;
 }
@@ -229,15 +217,15 @@ for j in 1..n{
       
 
     ilen -= block_size;
-    input = &(input+block_size as u8);
+    input[1] = input[1]+block_size as u8;
 }
 
 /* If there is data left over that wasn't aligned to a block */
 if ilen > 0 
 {
  
-    cmac_ctx::unprocessed_block[cmac_ctx::unprocessed_len]=input.clone();
-    cmac_ctx::unprocessed_len += ilen;
+    cmac_ctx.unprocessed_block[cmac_ctx.unprocessed_len]=input[1].clone();
+    cmac_ctx.unprocessed_len += ilen;
 }
 
 return ret;
@@ -247,9 +235,9 @@ return ret;
 pub fn mbedtls_cipher_cmac_finish(ctx:&mut  cipher::cipher_context_t  ,
      output: &u8 )->i32{
 //
-let cmac_ctx:&mut cmac_header::mbedtls_cmac_context_t;
-let state:[u8;1];
-let last_block:[u8;1];
+let mut cmac_ctx: cmac_header::mbedtls_cmac_context_t;
+let state:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
+let last_block:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
 let  K1:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
 let  K2:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
 let mut M_last:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
@@ -263,19 +251,19 @@ if  !ptr::eq(ctx,ctx)  {
     
 
 cmac_ctx = ctx.cmac_ctx;
-block_size = ctx::cipher_info::block_size;
-state = cmac_ctx::state;
+block_size = ctx.cipher_info.block_size;
+state = cmac_ctx.state;
 
-mbedtls_platform_zeroize( &K1, mem::size_of::<K1>() );
-mbedtls_platform_zeroize( &K2, mem::size_of::<K2>( ));
-cmac_generate_subkeys( &ctx, &K1, &K2 );
+cipher::mbedtls_platform_zeroize( &K1,cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX*mem::size_of::<u8>() );
+cipher::mbedtls_platform_zeroize( &K2,cmac_header:: MBEDTLS_CIPHER_BLKSIZE_MAX*mem::size_of::<u8>());
+cmac_generate_subkeys( ctx, &mut K1, &mut K2 );
 
-last_block = cmac_ctx::unprocessed_block;
+last_block = cmac_ctx.unprocessed_block;
 
 /* Calculate last block */
-if cmac_ctx::unprocessed_len < block_size 
+if cmac_ctx.unprocessed_len < block_size 
 {
-    cmac_pad( M_last, block_size, last_block, cmac_ctx::unprocessed_len );
+    cmac_pad( &mut M_last, block_size, &last_block, cmac_ctx.unprocessed_len );
     cmac_xor_block( &M_last, &M_last, &K2, block_size );
 }
 else
@@ -291,29 +279,28 @@ ret = cipher::cipher_update( ctx, &state, &block_size, &state,&olen );
 if ret != 0 
 {
     
-mbedtls_platform_zeroize( &K1, mem::size_of::<K1>( ) );
-mbedtls_platform_zeroize( &K2, mem::size_of::<K2>( ) );
+cipher::mbedtls_platform_zeroize( &K1,cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX*mem::size_of::<u8>() );
+cipher::mbedtls_platform_zeroize( &K2,cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX*mem::size_of::<u8>() );
 
-cmac_ctx::unprocessed_len = 0;
-mbedtls_platform_zeroize( cmac_ctx::unprocessed_block,
-                          mem::size_of::<cmac_ctx::unprocessed_block>() );
-mbedtls_platform_zeroize( &state, cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX );
+cmac_ctx.unprocessed_len = 0;
+cipher::mbedtls_platform_zeroize( &cmac_ctx.unprocessed_block,
+                          cmac_ctx.unprocessed_len );
+cipher::mbedtls_platform_zeroize( &state, cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX );
 return ret ;
 }
 
-///
-memcpy( output, state, block_size );
+cipher::memcpy( &output, &state, block_size );
 
 /* Wipe the generated keys on the stack, and any other transients to avoid
  * side channel leakage */
-mbedtls_platform_zeroize(&K1, mem::size_of::<K1>( ) );
-mbedtls_platform_zeroize( &K2, mem::size_of::<K2>( ) );
+cipher::mbedtls_platform_zeroize(&K1,cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX*mem::size_of::<u8>() );
+cipher::mbedtls_platform_zeroize( &K2,cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX*mem::size_of::<u8>() );
 
-cmac_ctx::unprocessed_len = 0;
-mbedtls_platform_zeroize( cmac_ctx::unprocessed_block,
-                          mem::size_of::< cmac_ctx::unprocessed_block>( ) );
+cmac_ctx.unprocessed_len = 0;
+cipher::mbedtls_platform_zeroize( &cmac_ctx.unprocessed_block,
+                          cmac_ctx.unprocessed_len );
 
-mbedtls_platform_zeroize( &state, cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX );
+cipher::mbedtls_platform_zeroize( &state, cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX );
 return ret ;  
 
 
@@ -321,41 +308,36 @@ return ret ;
 }
 
 pub fn mbedtls_cipher_cmac_reset(ctx:&mut  cipher::cipher_context_t )->i32{
-    let cmac_ctx:&mut cmac_header::mbedtls_cmac_context_t;
+    let cmac_ctx:cmac_header::mbedtls_cmac_context_t;
 
-    if ctx.is_none() || ctx::cipher_info.is_none() || ctx::cmac_ctx.is_none {
-
-        return cmac_header::MBEDTLS_ERR_CIPHER_BAD_INPUT_DATA ;
-    }
+  
        
 
-    cmac_ctx = ctx::cmac_ctx;
+    cmac_ctx = ctx.cmac_ctx;
 
     /* Reset the internal state */
-    cmac_ctx::unprocessed_len = 0;
-    mbedtls_platform_zeroize( cmac_ctx::unprocessed_block,
-                              mem::size_of::<cmac_ctx::unprocessed_block>() );
-    mbedtls_platform_zeroize( cmac_ctx::state,
-                              mem::size_of::<cmac_ctx::state>() );
+    cmac_ctx.unprocessed_len = 0;
+    cipher::mbedtls_platform_zeroize( &cmac_ctx.unprocessed_block,
+        cmac_ctx.unprocessed_len );
+    cipher::mbedtls_platform_zeroize( &cmac_ctx.state,
+        cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX );
 
     return 0 ;
 
 }
 
-pub fn mbedtls_cipher_cmac( cipher_info: &cipher::cipher_info_t,
-key:&u8,  keylen: usize,
-   input: &u8,  ilen : usize,
-    output :&mut u8)->i32{
+pub fn mbedtls_cipher_cmac( cipher_info: cipher::cipher_info_t,
+key:u8,  keylen: usize,
+   input:&u8,  ilen : usize,
+    output :&u8)->i32{
       
         let mut ctx:cipher::cipher_context_t;
         let mut ret:i32 = cmac_header::MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
-    
-        if cipher_info.is_none()  {
-            return cmac_header::MBEDTLS_ERR_CIPHER_BAD_INPUT_DATA ;
-        }
+       
+        
            
     
-        mbedtls_cipher_init( &mut ctx );
+        cipher::mbedtls_cipher_init( ctx );
     
         ret = cipher::mbedtls_cipher_setup( &mut ctx, cipher_info );
         if ret != 0 {
@@ -365,14 +347,14 @@ key:&u8,  keylen: usize,
         }
             
     
-        ret = mbedtls_cipher_cmac_starts( &mut ctx, key, keylen );
+        ret = mbedtls_cipher_cmac_starts( &mut ctx, &key, keylen );
         if ret != 0 {
             mem::drop( &mut ctx );
     
             return ret ;
         }
     
-        ret = mbedtls_cipher_cmac_update( &mut ctx, input, ilen );
+        //ret = mbedtls_cipher_cmac_update( &mut ctx, input, ilen );
         if ret != 0 {
             mem::drop( &mut ctx );
     
@@ -424,7 +406,7 @@ pub fn mbedtls_aes_cmac_prf_128( key:&u8,  key_length :mut usize,
                                    output );
     
     exit:
-        mbedtls_platform_zeroize( int_key, mem::size_of::< in>(t_key ) );
+        cipher::mbedtls_platform_zeroize( int_key, mem::size_of::< in>(t_key ) );
     
         return( ret );
 
@@ -459,7 +441,7 @@ const aes_128_key:[u8;16]=[
 ];
 
 
-const aes_128_subkeys:[[u8;2];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
+ const aes_128_subkeys:[[u8;cmac_header::MBEDTLS_AES_BLOCK_SIZE];2 ] = [
     [
         /* K1 */
         0xfb, 0xee, 0xd6, 0x18,     0x35, 0x71, 0x33, 0x66,
@@ -471,7 +453,7 @@ const aes_128_subkeys:[[u8;2];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
         0xf9, 0x0b, 0xc1, 0x1e,     0xe4, 0x6d, 0x51, 0x3b
     ]
 ];
-const aes_128_expected_result:[[u8;cmac_header::NB_CMAC_TESTS_PER_KEY];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
+const aes_128_expected_result:[[u8;cmac_header::MBEDTLS_AES_BLOCK_SIZE];cmac_header::NB_CMAC_TESTS_PER_KEY] = [
     [
         /* Example #1 */
         0xbb, 0x1d, 0x69, 0x29,     0xe9, 0x59, 0x37, 0x28,
@@ -501,9 +483,8 @@ const aes_192_key:[u8;24] = [
     0x62, 0xf8, 0xea, 0xd2,     0x52, 0x2c, 0x6b, 0x7b
 ];
 
-const aes_192_subkeys:[[u8;2];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
+pub const aes_192_subkeys:[[u8;cmac_header::MBEDTLS_AES_BLOCK_SIZE];2] = [
     [
-        /* K1 */
         0x44, 0x8a, 0x5b, 0x1c,     0x93, 0x51, 0x4b, 0x27,
         0x3e, 0xe6, 0x43, 0x9d,     0xd4, 0xda, 0xa2, 0x96
     ],
@@ -514,7 +495,7 @@ const aes_192_subkeys:[[u8;2];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
     ]
 ];
 
-const aes_192_expected_result:[[u8;cmac_header::NB_CMAC_TESTS_PER_KEY];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
+const aes_192_expected_result:[[u8;cmac_header::MBEDTLS_AES_BLOCK_SIZE];cmac_header::NB_CMAC_TESTS_PER_KEY] = [
     [
         /* Example #1 */
         0xd1, 0x7d, 0xdf, 0x46,     0xad, 0xaa, 0xcd, 0xe5,
@@ -544,7 +525,7 @@ const aes_256_key:[u8;32] = [
     0x1f, 0x35, 0x2c, 0x07,     0x3b, 0x61, 0x08, 0xd7,
     0x2d, 0x98, 0x10, 0xa3,     0x09, 0x14, 0xdf, 0xf4
 ];
-const aes_256_subkeys:[[u8;2];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
+const aes_256_subkeys:[[u8;cmac_header::MBEDTLS_AES_BLOCK_SIZE];2] = [
     [
         /* K1 */
         0xca, 0xd1, 0xed, 0x03,     0x29, 0x9e, 0xed, 0xac,
@@ -556,7 +537,7 @@ const aes_256_subkeys:[[u8;2];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
         0x5d, 0x35, 0x33, 0x01,     0x0c, 0x42, 0xa0, 0xd9
     ]
 ];
-const aes_256_expected_result:[[u8;cmac_header::NB_CMAC_TESTS_PER_KEY];cmac_header::MBEDTLS_AES_BLOCK_SIZE] = [
+const aes_256_expected_result:[[u8;cmac_header::MBEDTLS_AES_BLOCK_SIZE];cmac_header::NB_CMAC_TESTS_PER_KEY] = [
     [
         /* Example #1 */
         0x02, 0x89, 0x62, 0xf6,     0x1b, 0x7b, 0xf8, 0x9e,
@@ -598,7 +579,7 @@ const des3_2key_key:[u8;24] = [
     /* Key3 */
     0x01, 0x23, 0x45, 0x67,     0x89, 0xab, 0xcd, 0xef
 ];
-const des3_2key_subkeys:[[u8;2];8] = [
+const des3_2key_subkeys:[[u8;8];2] = [
     [
         /* K1 */
         0x0d, 0xd2, 0xcb, 0x7a,     0x3d, 0x88, 0x88, 0xd9
@@ -608,7 +589,7 @@ const des3_2key_subkeys:[[u8;2];8] = [
         0x1b, 0xa5, 0x96, 0xf4,     0x7b, 0x11, 0x11, 0xb2
     ]
 ];
-const  des3_2key_expected_result:[[u8;cmac_header::NB_CMAC_TESTS_PER_KEY];cmac_header::MBEDTLS_DES3_BLOCK_SIZE] = [
+const  des3_2key_expected_result:[[u8;cmac_header::MBEDTLS_DES3_BLOCK_SIZE];cmac_header::NB_CMAC_TESTS_PER_KEY] = [
     [
         /* Sample #1 */
         0x79, 0xce, 0x52, 0xa7,     0xf7, 0x86, 0xa9, 0x60
@@ -637,7 +618,7 @@ const des3_3key_key:[u8;24] = [
     0x45, 0x67, 0x89, 0xab,     0xcd, 0xef, 0x01, 0x23
 ];
 
-const  des3_3key_subkeys:[[u8;2];8] = [
+const  des3_3key_subkeys:[[u8;8];2] = [
     [
         /* K1 */
         0x9d, 0x74, 0xe7, 0x39,     0x33, 0x17, 0x96, 0xc0
@@ -647,7 +628,7 @@ const  des3_3key_subkeys:[[u8;2];8] = [
         0x3a, 0xe9, 0xce, 0x72,     0x66, 0x2f, 0x2d, 0x9b
 ]
 ];
- const  des3_3key_expected_result:[[u8;cmac_header::NB_CMAC_TESTS_PER_KEY];cmac_header::MBEDTLS_DES3_BLOCK_SIZE] = [
+ const  des3_3key_expected_result:[[u8;cmac_header::MBEDTLS_DES3_BLOCK_SIZE];cmac_header::NB_CMAC_TESTS_PER_KEY] = [
     [
         /* Sample #1 */
         0x7d, 0xb0, 0xd3, 0x7d,     0xf9, 0x36, 0xc5, 0x50
@@ -690,7 +671,7 @@ const  des3_3key_subkeys:[[u8;2];8] = [
     0x10, 0x11, 0x12, 0x13
  ];
 
- const  PRFT:[[u8;cmac_header::NB_PRF_TESTS];16] = [
+ const  PRFT:[[u8;16];cmac_header::NB_PRF_TESTS] = [
     [
         0x84, 0xa3, 0x48, 0xa4,     0xa4, 0x5d, 0x23, 0x5b,
         0xab, 0xff, 0xfc, 0x0d,     0x2b, 0x4d, 0xa0, 0x9a
@@ -716,9 +697,9 @@ const  des3_3key_subkeys:[[u8;2];8] = [
      block_size : i32,
     num_tests: i32 )->i32{
 
-       let (mut i,mut ret):(i32,i32);
+    let (mut i,mut ret):(i32,i32);
      let mut  ret=0;
-    let mut ctx:cipher::cipher_context_t;
+    let  ctx:cipher::cipher_context_t;
     let cipher_info:cipher::cipher_info_t;
     let mut K1:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
     let mut K2:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
@@ -740,17 +721,17 @@ const  des3_3key_subkeys:[[u8;2];8] = [
             if verbose != 0 {
 
                 println!( "test execution failed\n" );
-                mbedtls_platform_zeroize( ctx::cmac_ctx,
+                cipher::mbedtls_platform_zeroize( &ctx.cmac_ctx.unprocessed_block,
                     mem::size_of::< cmac_header::mbedtls_cmac_context_t>() );
-                    mem::drop( ctx::cmac_ctx );
+                    mem::drop( ctx.cmac_ctx );
                     return ret;
             }
                
            
         }
-
-        if ( ret = cipher::mbedtls_cipher_setkey( &ctx, key, keybits,
-                                       cipher::operation_t::MBEDTLS_ENCRYPT ) ) != 0 
+        ret = cipher::mbedtls_cipher_setkey( &ctx, key, keybits,
+            cipher::operation_t::MBEDTLS_ENCRYPT );
+        if ret != 0 
         {
             if verbose != 0 {
 
@@ -758,13 +739,13 @@ const  des3_3key_subkeys:[[u8;2];8] = [
             }
                 
 
-              mbedtls_platform_zeroize( ctx::cmac_ctx,
+              cipher::mbedtls_platform_zeroize( &ctx.cmac_ctx.unprocessed_block,
                                                 mem::size_of::< cmac_header::mbedtls_cmac_context_t>() );
-              mem::drop( ctx::cmac_ctx );
+              mem::drop( ctx.cmac_ctx );
                  return ret;
         }
 
-        ret = cmac_generate_subkeys( &mut ctx, &K1, &K2 );
+        ret = cmac_generate_subkeys( &mut ctx, &mut K1, &mut K2 );
         if ret != 0 
             {
            if verbose != 0 {
@@ -773,12 +754,12 @@ const  des3_3key_subkeys:[[u8;2];8] = [
            }
                 
    
-               mbedtls_platform_zeroize( ctx::cmac_ctx,
+               cipher::mbedtls_platform_zeroize( &ctx.cmac_ctx.unprocessed_block,
                                                 mem::size_of::< cmac_header::mbedtls_cmac_context_t>() );
-              mem::drop( ctx::cmac_ctx );
+              mem::drop( ctx.cmac_ctx );
                  return ret;
         }
-        ret = memcmp( K1, subkeys, block_size );
+        ret = cipher::memcmp( &K1, subkeys, block_size );
         if ret !=0{
             if verbose != 0 {
 
@@ -786,12 +767,12 @@ const  des3_3key_subkeys:[[u8;2];8] = [
             }
            
 
-            mbedtls_platform_zeroize( ctx::cmac_ctx,
+            cipher::mbedtls_platform_zeroize( &ctx.cmac_ctx.unprocessed_block,
                 mem::size_of::< cmac_header::mbedtls_cmac_context_t>() );
-                mem::drop( ctx::cmac_ctx );
+                mem::drop( ctx.cmac_ctx );
                 return ret; 
         }
-        ret = memcmp( K2, subkeys, block_size );
+        ret = cipher::memcmp( &K2, subkeys, block_size );
         if ret != 0  
         {
             if verbose != 0 {
@@ -800,9 +781,9 @@ const  des3_3key_subkeys:[[u8;2];8] = [
             }
            
 
-            mbedtls_platform_zeroize( ctx::cmac_ctx,
+            cipher::mbedtls_platform_zeroize( &ctx.cmac_ctx.unprocessed_block,
                 mem::size_of::< cmac_header::mbedtls_cmac_context_t>() );
-                mem::drop( ctx::cmac_ctx );
+                mem::drop( ctx.cmac_ctx );
                 return ret;
         }
 
@@ -811,9 +792,9 @@ const  des3_3key_subkeys:[[u8;2];8] = [
 
         }
             
-            mbedtls_platform_zeroize( ctx::cmac_ctx,
+            cipher::mbedtls_platform_zeroize( &ctx.cmac_ctx.unprocessed_block,
                 mem::size_of::< cmac_header::mbedtls_cmac_context_t>() );
-            mem::drop( ctx::cmac_ctx );
+            mem::drop( ctx.cmac_ctx );
             return ret;
     }
 
@@ -826,23 +807,22 @@ const  des3_3key_subkeys:[[u8;2];8] = [
 
 pub fn cmac_test_wth_cipher( verbose:i32,
          testname :&u8,
-         key:&u8,
-         keybits:i32,
-        messages :&u8,
+         key:u8,
+         keybits:usize,
+        messages :u8,
         message_lengths:[u32;4],
-         expected_result:&u8,
+         expected_result:u8,
          cipher_type : cipher::cipher_type_t ,
          block_size:  i32,
          num_tests : i32)->i32{
 
 
-            let cipher_info:&cipher::cipher_info_t;
-            let mut i:i32;
+            let cipher_info:cipher::cipher_type_t;
+            let mut i:usize;
             let mut ret:i32=0;
-            let mut output:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
+            let output:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX];
         
-            cipher_info = cipher::mbedtls_cipher_info_from_type( cipher_type );
-            if cipher_info.is_none() 
+            if None != Some(cipher_info)
             {
                 /* Failing at this point must be due to a build issue */
                 ret = cmac_header::MBEDTLS_ERR_CIPHER_FEATURE_UNAVAILABLE;
@@ -856,9 +836,11 @@ pub fn cmac_test_wth_cipher( verbose:i32,
                     println!( "  {} CMAC #{}: ", testname, i + 1 );
                 }
                     
-        
-                if ( ret = mbedtls_cipher_cmac( cipher_info, key, keybits, messages,
-                                                 message_lengths[i], output ) ) != 0 
+               let ctx:cipher::cipher_info_t;
+               let size:u8=16;
+                ret = mbedtls_cipher_cmac( ctx, key, keybits, &messages,
+                    message_lengths[i as usize].try_into().unwrap(),&size);
+                if ret != 0 
                 {
                     if verbose != 0 {
 
@@ -868,7 +850,8 @@ pub fn cmac_test_wth_cipher( verbose:i32,
                         
                 }
         
-                if ( ret = memcmp( output, &expected_result[i * block_size], block_size ) ) != 0 
+                ret = cipher::memcmp( &output, &expected_result, block_size );
+                if ret != 0 
                 {
                     if verbose != 0 {
 

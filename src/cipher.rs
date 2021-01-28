@@ -13,11 +13,11 @@ pub enum  operation_t {
 #[allow(non_camel_case_types)]
 pub struct cipher_context_t
 {    /** Information about the associated cipher. */
-    pub cipher_info: cipher_info_t,
+    pub cipher_info : cipher_info_t,
     key_bitlen: i32,
     operation: operation_t,
     state:[u8;cmac_header::MBEDTLS_CIPHER_BLKSIZE_MAX ],
-    cmac_ctx: &cmac_header::mbedtls_cmac_context_t ,
+    pub cmac_ctx: cmac_header::mbedtls_cmac_context_t ,
     add_padding: fn(),
     get_padding: fn(),
     unprocessed_data: [u32;16],
@@ -58,7 +58,7 @@ pub fn mbedtls_cipher_setup(ctx: &mut cipher_context_t,
         0
     }
 
-pub fn cipher_update(ctx: &mut cipher_context_t, input: &[u8],
+pub fn cipher_update(ctx: &cipher_context_t, input: &[u8],
     ilen: &usize, output: &[u8], olen:&usize ) -> i32{
         0
     }
@@ -71,6 +71,18 @@ pub fn mbedtls_cipher_setkey(ctx:&cipher_context_t,
         0
         }
 
-fn memcmp(){
+pub fn memcmp( K1:&[u8], subkeys:&u8, block_size:i32 )->i32{
+0
+}
+
+
+
+
+//platform.util fns
+//-------------------------------------------------
+pub fn mbedtls_platform_zeroize(L:&[u8], len:usize ){
+
+}
+pub fn memcpy( output:&u8, state:&[u8], block_size:usize ){
 
 }
